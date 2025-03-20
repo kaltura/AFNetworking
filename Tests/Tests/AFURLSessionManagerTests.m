@@ -25,11 +25,17 @@
 
 #import "AFURLSessionManager.h"
 
+#ifdef __MAC_OS_X_VERSION_MIN_REQUIRED
+#define NSFoundationVersionNumber_With_Fixed_28588583_bug 0.0
+#else
+#define NSFoundationVersionNumber_With_Fixed_28588583_bug DBL_MAX
+#endif
+
+
 @interface AFURLSessionManagerTests : AFTestCase
 @property (readwrite, nonatomic, strong) AFURLSessionManager *localManager;
 @property (readwrite, nonatomic, strong) AFURLSessionManager *backgroundManager;
 @end
-
 
 @implementation AFURLSessionManagerTests
 
@@ -44,25 +50,30 @@
     self.localManager = [[AFURLSessionManager alloc] init];
     [self.localManager.session.configuration.URLCache removeAllCachedResponses];
 
-    //Unfortunately, iOS 7 throws an exception when trying to create a background URL Session inside this test target, which means our tests here can only run on iOS 8+
-    //Travis actually needs the try catch here. Just doing if ([NSURLSessionConfiguration respondsToSelector:@selector(backgroundSessionWithIdentifier)]) wasn't good enough.
-    @try {
+    //It was discovered that background sessions were hanging the test target
+    //on iOS 10 and Xcode 8.
+    //
+    //rdar://28588583
+    //
+    //For now, we'll disable the unit tests for background managers until that can
+    //be resolved
+    if (NSFoundationVersionNumber > NSFoundationVersionNumber_With_Fixed_28588583_bug) {
         NSString *identifier = [NSString stringWithFormat:@"com.afnetworking.tests.urlsession.%@", [[NSUUID UUID] UUIDString]];
         NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:identifier];
         self.backgroundManager = [[AFURLSessionManager alloc] initWithSessionConfiguration:configuration];
     }
-    @catch (NSException *exception) {
-
+    else {
+        self.backgroundManager = nil;
     }
 }
 
 - (void)tearDown {
     [super tearDown];
     [self.localManager.session.configuration.URLCache removeAllCachedResponses];
-    [self.localManager invalidateSessionCancelingTasks:YES];
+    [self.localManager invalidateSessionCancelingTasks:YES resetSession:NO];
     self.localManager = nil;
     
-    [self.backgroundManager invalidateSessionCancelingTasks:YES];
+    [self.backgroundManager invalidateSessionCancelingTasks:YES resetSession:NO];
     self.backgroundManager = nil;
 }
 
@@ -83,7 +94,7 @@
             completionHandler:nil];
     
     [task resume];
-    [self waitForExpectationsWithCommonTimeoutUsingHandler:nil];
+    [self waitForExpectationsWithCommonTimeout];
 }
 
 - (void)testDataTaskDownloadProgressCanBeKVOd {
@@ -103,7 +114,7 @@
                                                 return new == 1.0 && old != 0.0;
                                             }];
     [task resume];
-    [self waitForExpectationsWithCommonTimeoutUsingHandler:nil];
+    [self waitForExpectationsWithCommonTimeout];
 }
 
 - (void)testDownloadTaskDoesReportProgress {
@@ -119,7 +130,47 @@
             destination:nil
             completionHandler:nil];
     [task resume];
-    [self waitForExpectationsWithCommonTimeoutUsingHandler:nil];
+    [self waitForExpectationsWithCommonTimeout];
+}
+
+- (void)testSessionTaskDoesReportMetrics {
+    [self expectationForNotification:AFNetworkingTaskDidCompleteNotification object:nil handler:^BOOL(NSNotification * _Nonnull notification) {
+#if AF_CAN_USE_AT_AVAILABLE && AF_CAN_INCLUDE_SESSION_TASK_METRICS
+        if (@available(iOS 10, macOS 10.12, watchOS 3, tvOS 10, *)) {
+            return [notification userInfo][AFNetworkingTaskDidCompleteSessionTaskMetrics] != nil;
+        }
+#endif
+        return YES;
+    }];
+
+#if AF_CAN_INCLUDE_SESSION_TASK_METRICS
+    __weak XCTestExpectation *metricsBlock = [self expectationWithDescription:@"Metrics completion block is called"];
+    [self.localManager setTaskDidFinishCollectingMetricsBlock:^(NSURLSession * _Nonnull session, NSURLSessionTask * _Nonnull task, NSURLSessionTaskMetrics * _Nullable metrics) {
+        [metricsBlock fulfill];
+    }];
+#endif
+
+    NSURLSessionTask *task = [self.localManager downloadTaskWithRequest:[self bigImageURLRequest]
+                                                               progress:nil
+                                                            destination:nil
+                                                      completionHandler:nil];
+    [task resume];
+    [self waitForExpectationsWithCommonTimeout];
+}
+
+- (void)testSessionIsStillValid {
+    
+    NSURLSession *session = self.localManager.session;
+    [self.localManager invalidateSessionCancelingTasks:YES resetSession:NO];
+    
+    XCTAssertEqual(session, self.localManager.session);
+}
+
+- (void)testSessionRecreatesAgain {
+    
+    [self.localManager invalidateSessionCancelingTasks:YES resetSession:YES];
+    
+    XCTAssertNotNil(self.localManager.session);
 }
 
 - (void)testUploadTaskDoesReportProgress {
@@ -140,13 +191,13 @@
             fromData:[payload dataUsingEncoding:NSUTF8StringEncoding]
             progress:^(NSProgress * _Nonnull uploadProgress) {
                 NSLog(@"%@", uploadProgress.localizedDescription);
-                if ([uploadProgress fractionCompleted] == 1.0) {
+                if (uploadProgress.fractionCompleted == 1.0) {
                     [expectation fulfill];
                 }
             }
             completionHandler:nil];
     [task resume];
-    [self waitForExpectationsWithCommonTimeoutUsingHandler:nil];
+    [self waitForExpectationsWithCommonTimeout];
 }
 
 - (void)testUploadProgressCanBeKVOd {
@@ -170,35 +221,7 @@
     [self keyValueObservingExpectationForObject:uploadProgress keyPath:NSStringFromSelector(@selector(fractionCompleted)) expectedValue:@(1.0)];
 
     [task resume];
-    [self waitForExpectationsWithCommonTimeoutUsingHandler:nil];
-}
-
-#pragma mark - rdar://17029580
-
-- (void)testRDAR17029580IsFixed {
-    //https://github.com/AFNetworking/AFNetworking/issues/2093
-    //https://github.com/AFNetworking/AFNetworking/pull/3205
-    //http://openradar.appspot.com/radar?id=5871104061079552
-    dispatch_queue_t serial_queue = dispatch_queue_create("com.alamofire.networking.test.RDAR17029580", DISPATCH_QUEUE_SERIAL);
-    NSMutableArray *taskIDs = [[NSMutableArray alloc] init];
-    for (NSInteger i = 0; i < 100; i++) {
-        XCTestExpectation *expectation = [self expectationWithDescription:@"Wait for task creation"];
-        __block NSURLSessionTask *task;
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            task = [self.localManager
-                    dataTaskWithRequest:[NSURLRequest requestWithURL:self.baseURL]
-                    uploadProgress:nil
-                    downloadProgress:nil
-                    completionHandler:nil];
-            dispatch_sync(serial_queue, ^{
-                XCTAssertFalse([taskIDs containsObject:@(task.taskIdentifier)]);
-                [taskIDs addObject:@(task.taskIdentifier)];
-            });
-            [task cancel];
-            [expectation fulfill];
-        });
-    }
-    [self waitForExpectationsWithCommonTimeoutUsingHandler:nil];
+    [self waitForExpectationsWithCommonTimeout];
 }
 
 #pragma mark - Issue #2702 Tests
@@ -384,6 +407,7 @@
                                                             downloadProgress:nil
                                                            completionHandler:nil];
         XCTAssert([NSStringFromClass([task class]) isEqualToString:@"__NSCFBackgroundDataTask"]);
+        [task cancel];
     } else {
         NSLog(@"Unable to run %@ because self.backgroundManager is nil", NSStringFromSelector(_cmd));
     }
@@ -399,6 +423,7 @@
                                                              completionHandler:nil];
 #pragma clang diagnostic pop
         XCTAssert([NSStringFromClass([task class]) isEqualToString:@"__NSCFBackgroundUploadTask"]);
+        [task cancel];
     } else {
         NSLog(@"Unable to run %@ because self.backgroundManager is nil", NSStringFromSelector(_cmd));
     }
@@ -411,9 +436,47 @@
                                                                      destination:nil
                                                                completionHandler:nil];
         XCTAssert([NSStringFromClass([task class]) isEqualToString:@"__NSCFBackgroundDownloadTask"]);
+        [task cancel];
     } else {
         NSLog(@"Unable to run %@ because self.backgroundManager is nil", NSStringFromSelector(_cmd));
     }
+}
+
+#pragma mark - Notifications
+
+- (void)testTaskMoveSuccessfullyAfterDownloading {
+    NSURL *dirURL = [[[NSFileManager defaultManager] URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask] lastObject];
+    NSURL *destinationURL = [dirURL URLByAppendingPathComponent:NSUUID.UUID.UUIDString];
+
+    NSURLSessionDownloadTask *task = [self.localManager downloadTaskWithRequest:[self bigImageURLRequest]
+                progress:nil
+             destination:^NSURL *(NSURL *targetPath, NSURLResponse *response) {
+                return destinationURL;
+            }
+       completionHandler:nil];
+
+    [self expectationForNotification:AFURLSessionDownloadTaskDidMoveFileSuccessfullyNotification
+                              object:nil
+                             handler:nil];
+    [task resume];
+    [self waitForExpectationsWithCommonTimeout];
+    [[NSFileManager defaultManager] removeItemAtURL:destinationURL error:nil];
+}
+
+- (void)testTaskMoveFailedAfterDownloading {
+    NSURLSessionDownloadTask *downloadTask = [self.localManager downloadTaskWithRequest:[self bigImageURLRequest]
+               progress:nil
+            destination:^NSURL *(NSURL *targetPath, NSURLResponse *response) {
+                // Try to move the destination file to a nonexist path on purpose for simulating a move failure.
+                return [NSURL fileURLWithPath:@"/a/b/c"];
+            }
+      completionHandler:nil];
+
+    [self expectationForNotification:AFURLSessionDownloadTaskDidFailToMoveFileNotification
+                              object:nil
+                             handler:nil];
+    [downloadTask resume];
+    [self waitForExpectationsWithCommonTimeout];
 }
 
 #pragma mark - private
@@ -441,10 +504,10 @@
 }
 
 - (NSURLRequest *)_delayURLRequest {
-    return [NSURLRequest requestWithURL:[self.baseURL URLByAppendingPathComponent:@"delay/1"]];
+    return [NSURLRequest requestWithURL:self.delayURL];
 }
 
-- (IMP)_implementationForTask:(NSURLSessionTask  *)task selector:(SEL)selector {
+- (IMP)_implementationForTask:(NSURLSessionTask *)task selector:(SEL)selector {
     return [self _implementationForClass:[task class] selector:selector];
 }
 
