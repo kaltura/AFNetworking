@@ -45,7 +45,7 @@ static NSData * AFJSONTestData() {
 - (void)testThatJSONRequestSerializationHandlesParametersDictionary {
     NSDictionary *parameters = @{@"key":@"value"};
     NSError *error = nil;
-    NSMutableURLRequest *request = [self.requestSerializer requestWithMethod:@"POST" URLString:AFNetworkingTestsBaseURLString parameters:parameters error:&error];
+    NSMutableURLRequest *request = [self.requestSerializer requestWithMethod:@"POST" URLString:self.baseURL.absoluteString parameters:parameters error:&error];
 
     XCTAssertNil(error, @"Serialization error should be nil");
 
@@ -57,13 +57,36 @@ static NSData * AFJSONTestData() {
 - (void)testThatJSONRequestSerializationHandlesParametersArray {
     NSArray *parameters = @[@{@"key":@"value"}];
     NSError *error = nil;
-    NSMutableURLRequest *request = [self.requestSerializer requestWithMethod:@"POST" URLString:AFNetworkingTestsBaseURLString parameters:parameters error:&error];
+    NSMutableURLRequest *request = [self.requestSerializer requestWithMethod:@"POST" URLString:self.baseURL.absoluteString parameters:parameters error:&error];
 
     XCTAssertNil(error, @"Serialization error should be nil");
 
     NSString *body = [[NSString alloc] initWithData:[request HTTPBody] encoding:NSUTF8StringEncoding];
 
     XCTAssertTrue([@"[{\"key\":\"value\"}]" isEqualToString:body], @"Parameters were not encoded correctly");
+}
+
+- (void)testThatJSONRequestSerializationHandlesInvalidParameters {
+    NSString *string = [[NSString alloc] initWithBytes:"\xd8\x00" length:2 encoding:NSUTF16StringEncoding];
+    
+    NSDictionary *parameters = @{@"key":string};
+    NSError *error = nil;
+    NSMutableURLRequest *request = [self.requestSerializer requestWithMethod:@"POST" URLString:self.baseURL.absoluteString parameters:parameters error:&error];
+    
+    XCTAssertNil(request, @"Expected nil request.");
+    XCTAssertNotNil(error, @"Expected non-nil error.");
+}
+
+- (void)testThatJSONRequestSerializationErrorsWithInvalidJSON {
+    NSDictionary *parameters = @{@"key":[NSSet setWithObject:@"value"]};
+    NSError *error = nil;
+    NSMutableURLRequest *request = [self.requestSerializer requestWithMethod:@"POST" URLString:self.baseURL.absoluteString parameters:parameters error:&error];
+    
+    XCTAssertNil(request, @"Request should be nil");
+    XCTAssertNotNil(error, @"Serialization error should be not nil");
+    XCTAssertEqualObjects(error.domain, AFURLRequestSerializationErrorDomain);
+    XCTAssertEqual(error.code, NSURLErrorCannotDecodeContentData);
+    XCTAssertEqualObjects(error.localizedFailureReason, @"The `parameters` argument is not valid JSON.");
 }
 
 @end
@@ -154,7 +177,7 @@ static NSData * AFJSONTestData() {
 - (void)testThatJSONRemovesKeysWithNullValues {
     self.responseSerializer.removesKeysWithNullValues = YES;
     NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:self.baseURL statusCode:200 HTTPVersion:@"1.1" headerFields:@{@"Content-Type":@"text/json"}];
-    NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"key":@"value",@"nullkey":[NSNull null],@"array":@[@{@"subnullkey":[NSNull null]}]}
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"key":@"value",@"nullkey":[NSNull null],@"array":@[@{@"subnullkey":[NSNull null]}], @"arrayWithNulls": @[[NSNull null]]}
                                                    options:(NSJSONWritingOptions)0
                                                      error:nil];
 
@@ -166,6 +189,40 @@ static NSData * AFJSONTestData() {
     XCTAssertNotNil(responseObject[@"key"]);
     XCTAssertNil(responseObject[@"nullkey"]);
     XCTAssertNil(responseObject[@"array"][0][@"subnullkey"]);
+    XCTAssertEqualObjects(responseObject[@"arrayWithNulls"], @[]);
+}
+
+- (void)testThatJSONResponseSerializerCanBeCopied {
+    [self.responseSerializer setAcceptableStatusCodes:[NSIndexSet indexSetWithIndex:100]];
+    [self.responseSerializer setAcceptableContentTypes:[NSSet setWithObject:@"test/type"]];
+    [self.responseSerializer setReadingOptions:NSJSONReadingMutableLeaves];
+    [self.responseSerializer setRemovesKeysWithNullValues:YES];
+
+    AFJSONResponseSerializer *copiedSerializer = [self.responseSerializer copy];
+    XCTAssertNotEqual(copiedSerializer, self.responseSerializer);
+    XCTAssertEqual(copiedSerializer.acceptableStatusCodes, self.responseSerializer.acceptableStatusCodes);
+    XCTAssertEqual(copiedSerializer.acceptableContentTypes, self.responseSerializer.acceptableContentTypes);
+    XCTAssertEqual(copiedSerializer.readingOptions, self.responseSerializer.readingOptions);
+    XCTAssertEqual(copiedSerializer.removesKeysWithNullValues, self.responseSerializer.removesKeysWithNullValues);
+}
+
+#pragma mark NSSecureCoding
+
+- (void)testJSONSerializerSupportsSecureCoding {
+    XCTAssertTrue([AFJSONResponseSerializer supportsSecureCoding]);
+}
+
+- (void)testJSONSerializerCanBeArchivedAndUnarchived {
+    AFJSONResponseSerializer *responseSerializer = [AFJSONResponseSerializer serializer];
+    NSData *archive = nil;
+    
+    archive = [self archivedDataWithRootObject:responseSerializer];
+    XCTAssertNotNil(archive);
+    AFJSONResponseSerializer *unarchivedSerializer = [self unarchivedObjectOfClass:[AFJSONResponseSerializer class] fromData:archive];
+    XCTAssertNotNil(unarchivedSerializer);
+    XCTAssertNotEqual(unarchivedSerializer, responseSerializer);
+    XCTAssertTrue([unarchivedSerializer.acceptableContentTypes isEqualToSet:responseSerializer.acceptableContentTypes]);
+    XCTAssertTrue([unarchivedSerializer.acceptableStatusCodes isEqualToIndexSet:responseSerializer.acceptableStatusCodes]);
 }
 
 @end

@@ -33,11 +33,14 @@
 
 - (void)testImageSerializerCanBeCopied {
     AFImageResponseSerializer *responseSerializer = [AFImageResponseSerializer serializer];
+    [responseSerializer setAcceptableContentTypes:[NSSet setWithObject:@"test/type"]];
+    [responseSerializer setAcceptableStatusCodes:[NSIndexSet indexSetWithIndex:100]];
+
     AFImageResponseSerializer *copiedSerializer = [responseSerializer copy];
     XCTAssertNotNil(copiedSerializer);
     XCTAssertNotEqual(copiedSerializer, responseSerializer);
-    XCTAssertTrue([copiedSerializer.acceptableContentTypes isEqualToSet:responseSerializer.acceptableContentTypes]);
-    XCTAssertTrue([copiedSerializer.acceptableStatusCodes isEqualToIndexSet:responseSerializer.acceptableStatusCodes]);
+    XCTAssertEqual(copiedSerializer.acceptableContentTypes, responseSerializer.acceptableContentTypes);
+    XCTAssertEqual(copiedSerializer.acceptableStatusCodes, responseSerializer.acceptableStatusCodes);
 #if TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_WATCH
     XCTAssertTrue(copiedSerializer.automaticallyInflatesResponseImage == responseSerializer.automaticallyInflatesResponseImage);
     XCTAssertTrue(fabs(copiedSerializer.imageScale - responseSerializer.imageScale) <= 0.001);
@@ -53,11 +56,11 @@
 
 - (void)testImageSerializerCanBeArchivedAndUnarchived {
     AFImageResponseSerializer   *responseSerializer = [AFImageResponseSerializer serializer];
-    NSData  *archive    = nil;
+    NSData *archive = nil;
     
-    archive = [NSKeyedArchiver archivedDataWithRootObject:responseSerializer];
+    archive = [self archivedDataWithRootObject:responseSerializer];
     XCTAssertNotNil(archive);
-    AFImageResponseSerializer *unarchivedSerializer = [NSKeyedUnarchiver unarchiveObjectWithData:archive];
+    AFImageResponseSerializer *unarchivedSerializer = [self unarchivedObjectOfClass:[AFImageResponseSerializer class] fromData:archive];
     XCTAssertNotNil(unarchivedSerializer);
     XCTAssertNotEqual(unarchivedSerializer, responseSerializer);
     XCTAssertTrue([unarchivedSerializer.acceptableContentTypes isEqualToSet:responseSerializer.acceptableContentTypes]);
@@ -80,9 +83,9 @@
     responseSerializer.imageScale = responseSerializer.imageScale * 2.0f;
 #endif
     
-    archive = [NSKeyedArchiver archivedDataWithRootObject:responseSerializer];
+    archive = [self archivedDataWithRootObject:responseSerializer];
     XCTAssertNotNil(archive);
-    AFImageResponseSerializer *unarchivedSerializer = [NSKeyedUnarchiver unarchiveObjectWithData:archive];
+    AFImageResponseSerializer *unarchivedSerializer = [self unarchivedObjectOfClass:[AFImageResponseSerializer class] fromData:archive];
     XCTAssertNotNil(unarchivedSerializer);
     XCTAssertNotEqual(unarchivedSerializer, responseSerializer);
 
