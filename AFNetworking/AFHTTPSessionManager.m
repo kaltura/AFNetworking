@@ -117,6 +117,23 @@
 
 #pragma mark -
 
+- (nullable NSURLSessionDataTask *)GET:(NSString *)URLString
+                            parameters:(nullable id)parameters
+                               success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                               failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self GET:URLString parameters:parameters headers:nil progress:nil success:success failure:failure];
+}
+
+- (nullable NSURLSessionDataTask *)GET:(NSString *)URLString
+                            parameters:(nullable id)parameters
+                              progress:(nullable void (^)(NSProgress *downloadProgress))downloadProgress
+                               success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                               failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self GET:URLString parameters:parameters headers:nil progress:downloadProgress success:success failure:failure];
+}
+
 - (NSURLSessionDataTask *)GET:(NSString *)URLString
                    parameters:(nullable id)parameters
                       headers:(nullable NSDictionary <NSString *, NSString *> *)headers
@@ -139,6 +156,14 @@
     return dataTask;
 }
 
+- (nullable NSURLSessionDataTask *)HEAD:(NSString *)URLString
+                             parameters:(nullable id)parameters
+                                success:(nullable void (^)(NSURLSessionDataTask *task))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self HEAD:URLString parameters:parameters headers:nil success:success failure:failure];
+}
+
 - (NSURLSessionDataTask *)HEAD:(NSString *)URLString
                     parameters:(nullable id)parameters
                        headers:(nullable NSDictionary<NSString *,NSString *> *)headers
@@ -158,6 +183,23 @@
 
 - (nullable NSURLSessionDataTask *)POST:(NSString *)URLString
                              parameters:(nullable id)parameters
+                                success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self POST:URLString parameters:parameters headers:nil progress:nil success:success failure:failure];
+}
+
+- (nullable NSURLSessionDataTask *)POST:(NSString *)URLString
+                             parameters:(nullable id)parameters
+                               progress:(nullable void (^)(NSProgress *uploadProgress))uploadProgress
+                                success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self POST:URLString parameters:parameters headers:nil progress:uploadProgress success:success failure:failure];
+}
+
+- (nullable NSURLSessionDataTask *)POST:(NSString *)URLString
+                             parameters:(nullable id)parameters
                                 headers:(nullable NSDictionary <NSString *, NSString *> *)headers
                                progress:(nullable void (^)(NSProgress *uploadProgress))uploadProgress
                                 success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
@@ -168,6 +210,25 @@
     [dataTask resume];
     
     return dataTask;
+}
+
+- (nullable NSURLSessionDataTask *)POST:(NSString *)URLString
+                             parameters:(nullable id)parameters
+              constructingBodyWithBlock:(nullable void (^)(id <AFMultipartFormData> formData))block
+                                success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self POST:URLString parameters:parameters headers:nil constructingBodyWithBlock:block progress:nil success:success failure:failure];
+}
+
+- (nullable NSURLSessionDataTask *)POST:(NSString *)URLString
+                             parameters:(nullable id)parameters
+              constructingBodyWithBlock:(nullable void (^)(id <AFMultipartFormData> formData))block
+                               progress:(nullable void (^)(NSProgress *uploadProgress))uploadProgress
+                                success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self POST:URLString parameters:parameters headers:nil constructingBodyWithBlock:block progress:uploadProgress success:success failure:failure];
 }
 
 - (NSURLSessionDataTask *)POST:(NSString *)URLString
@@ -209,6 +270,14 @@
     return task;
 }
 
+- (nullable NSURLSessionDataTask *)PUT:(NSString *)URLString
+                            parameters:(nullable id)parameters
+                               success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                               failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self PUT:URLString parameters:parameters headers:nil success:success failure:failure];
+}
+
 - (NSURLSessionDataTask *)PUT:(NSString *)URLString
                    parameters:(nullable id)parameters
                       headers:(nullable NSDictionary<NSString *,NSString *> *)headers
@@ -220,6 +289,14 @@
     [dataTask resume];
     
     return dataTask;
+}
+
+- (nullable NSURLSessionDataTask *)PATCH:(NSString *)URLString
+                              parameters:(nullable id)parameters
+                                 success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                 failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self PATCH:URLString parameters:parameters headers:nil success:success failure:failure];
 }
 
 - (NSURLSessionDataTask *)PATCH:(NSString *)URLString
@@ -235,6 +312,14 @@
     return dataTask;
 }
 
+- (nullable NSURLSessionDataTask *)DELETE:(NSString *)URLString
+                               parameters:(nullable id)parameters
+                                  success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                  failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure
+{
+    return [self DELETE:URLString parameters:parameters headers:nil success:success failure:failure];
+}
+
 - (NSURLSessionDataTask *)DELETE:(NSString *)URLString
                       parameters:(nullable id)parameters
                          headers:(nullable NSDictionary<NSString *,NSString *> *)headers
@@ -248,6 +333,16 @@
     return dataTask;
 }
 
+- (NSURLSessionDataTask *)dataTaskWithHTTPMethod:(NSString *)method
+                                       URLString:(NSString *)URLString
+                                      parameters:(id)parameters
+                                  uploadProgress:(nullable void (^)(NSProgress *uploadProgress)) uploadProgress
+                                downloadProgress:(nullable void (^)(NSProgress *downloadProgress)) downloadProgress
+                                         success:(void (^)(NSURLSessionDataTask *, id))success
+                                         failure:(void (^)(NSURLSessionDataTask *, NSError *))failure
+{
+    return [self dataTaskWithHTTPMethod:method URLString:URLString parameters:parameters headers:nil uploadProgress:uploadProgress downloadProgress:downloadProgress success:success failure:failure];
+}
 
 - (NSURLSessionDataTask *)dataTaskWithHTTPMethod:(NSString *)method
                                        URLString:(NSString *)URLString
